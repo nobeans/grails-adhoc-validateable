@@ -37,27 +37,30 @@ trait AdHocValidateable extends Validateable {
     boolean validate(List fieldsToValidate, Closure adHocConstraintsClosure) {
         beforeValidateHelper.invokeBeforeValidate(this, fieldsToValidate)
 
-        Map<String, ConstrainedProperty> baseConstraints = getConstraintsMap().clone() // to avoid modifying a cache object in Validateable
+        Map<String, ConstrainedProperty> constraints = getConstraintsMap()
 
         if (adHocConstraintsClosure) {
-            // merge ad-hoc constraints.
-            // if a same constraint is given for a same property, the ad-hoc overwrites.
+            // Merge ad-hoc constraints and default constraints.
+            // If a same constraint is given for a same property, the default is ignored.
+            // Not to modify a cached map, the target to modify must be the ad-hoc map.
             def adHocConstraints = getAddhocConstraintsMap(adHocConstraintsClosure)
-            for (ConstrainedProperty adhocConstrainedProperty : adHocConstraints.values()) {
-                def propertyName = adhocConstrainedProperty.propertyName
-                if (baseConstraints.containsKey(propertyName)) {
-                    for (Constraint appliedConstraint : adhocConstrainedProperty.appliedConstraints) {
-                        baseConstraints[propertyName].applyConstraint(appliedConstraint.name, appliedConstraint.parameter)
+            for (ConstrainedProperty constrainedProperty : constraints.values()) {
+                def propertyName = constrainedProperty.propertyName
+                if (adHocConstraints.containsKey(propertyName)) {
+                    for (Constraint appliedConstraint : constrainedProperty.appliedConstraints) {
+                        if (!adHocConstraints[propertyName].hasAppliedConstraint(appliedConstraint.name)) {
+                            adHocConstraints[propertyName].applyConstraint(appliedConstraint.name, appliedConstraint.parameter)
+                        }
                     }
-
                 } else {
-                    baseConstraints[propertyName] = adhocConstrainedProperty
+                    adHocConstraints[propertyName] = constrainedProperty
                 }
             }
+            constraints = adHocConstraints
         }
 
         def localErrors = new ValidationErrors(this, this.class.name)
-        doValidate(localErrors, baseConstraints, fieldsToValidate)
+        doValidate(localErrors, constraints, fieldsToValidate)
         errors = localErrors
         return !errors.hasErrors()
     }
