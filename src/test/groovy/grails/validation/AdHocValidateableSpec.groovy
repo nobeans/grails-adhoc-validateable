@@ -7,7 +7,7 @@ class AdHocValidateableSpec extends Specification {
 
     void 'Test that pre-declared constraints can be used'() {
         given:
-        def person = new Person(name: nameValue, age: ageValue, remarks: 'NOT_TO_OVERWRITE')
+        def person = new Person(name: nameValue, age: ageValue, remarks: 'JUST_FOR_COVERAGE')
 
         when:
         boolean actualValid = person.validate()
@@ -27,7 +27,7 @@ class AdHocValidateableSpec extends Specification {
 
     void 'Test that ad-hoc constraints can be used'() {
         given:
-        def person = new Person(name: nameValue, age: ageValue, remarks: 'NOT_TO_OVERWRITE')
+        def person = new Person(name: nameValue, age: ageValue, remarks: 'JUST_FOR_COVERAGE')
 
         when:
         boolean actualValid = person.validate {
@@ -50,7 +50,7 @@ class AdHocValidateableSpec extends Specification {
 
     void 'Test that "fieldsToValidate" can be used with ad-hoc constraints'() {
         given:
-        def person = new Person(name: nameValue, age: ageValue, remarks: 'NOT_TO_OVERWRITE')
+        def person = new Person(name: nameValue, age: ageValue, remarks: 'JUST_FOR_COVERAGE')
 
         when:
         boolean actualValid = person.validate(['age']) {
@@ -73,7 +73,7 @@ class AdHocValidateableSpec extends Specification {
 
     void 'Test that both pre-declared and ad-hoc constraints can be used together'() {
         given:
-        def person = new Person(name: nameValue, age: ageValue, remarks: 'NOT_TO_OVERWRITE')
+        def person = new Person(name: nameValue, age: ageValue, remarks: 'JUST_FOR_COVERAGE')
 
         when:
         boolean actualValid = person.validate {
@@ -95,7 +95,7 @@ class AdHocValidateableSpec extends Specification {
 
     void 'Test that pre-declared closure can be used as ad-hoc constraints'() {
         given:
-        def person = new Person(name: 'Kirk' * 10, age: 32, remarks: 'NOT_TO_OVERWRITE')
+        def person = new Person(name: 'Kirk' * 10, age: 32, remarks: 'JUST_FOR_COVERAGE')
 
         when:
         boolean valid = person.validate(Person.adHocConstraints)
@@ -109,7 +109,7 @@ class AdHocValidateableSpec extends Specification {
 
     void 'Test that ad-hoc constraints overwrites if the same kind of constraint is given as ad-hoc'() {
         given:
-        def person = new Person(name: '', age: 32, remarks: 'NOT_TO_OVERWRITE')
+        def person = new Person(name: '', age: 32, remarks: 'JUST_FOR_COVERAGE')
 
         expect:
         !person.validate()
@@ -125,7 +125,7 @@ class AdHocValidateableSpec extends Specification {
 
     void 'Test that empty closure as ad-hoc constraints is equivalent with only pre-declared constraints'() {
         given:
-        def person = new Person(name: nameValue, age: ageValue, remarks: 'NOT_TO_OVERWRITE')
+        def person = new Person(name: nameValue, age: ageValue, remarks: 'JUST_FOR_COVERAGE')
 
         when:
         boolean actualValid = person.validate {}
@@ -145,7 +145,7 @@ class AdHocValidateableSpec extends Specification {
 
     void 'Test that "beforeValidator" is called with ad-hoc constraints'() {
         given:
-        def person = new Person(name: 'Kirk', age: 32, remarks: 'NOT_TO_OVERWRITE')
+        def person = new Person(name: 'Kirk', age: 32, remarks: 'JUST_FOR_COVERAGE')
 
         expect:
         person.validate {
@@ -155,6 +155,77 @@ class AdHocValidateableSpec extends Specification {
 
         and:
         person.name == 'KIRK'
+    }
+
+    void 'Test that pre-declared is ignored when "inherit:false" is specified'() {
+        given:
+        def person = new Person(name: nameValue, age: ageValue, remarks: 'JUST_FOR_COVERAGE')
+
+        when:
+        boolean actualValid = person.validate(params, adHocConstraints)
+
+        then:
+        actualValid == expectedValid
+        person.errors['name']?.code == nameErrorCode
+        person.errors['age']?.code == ageErrorCode
+
+        where:
+        params           | adHocConstraints     | nameValue   | ageValue | expectedValid | nameErrorCode      | ageErrorCode
+        [inherit: true]  | { name maxSize: 10 } | 'Kirk'      | 32       | true          | null               | null
+        [inherit: true]  | { name maxSize: 10 } | 'Kirk' * 10 | 32       | false         | 'maxSize.exceeded' | null
+        [inherit: true]  | { name maxSize: 10 } | 'Kirk'      | -1       | false         | null               | 'min.notmet'
+        [inherit: true]  | { name maxSize: 10 } | 'Kirk' * 10 | -1       | false         | 'maxSize.exceeded' | 'min.notmet'
+        [inherit: true]  | {}                   | null        | null     | false         | 'nullable'         | 'nullable'
+        [inherit: false] | { name maxSize: 10 } | 'Kirk'      | 32       | true          | null               | null
+        [inherit: false] | { name maxSize: 10 } | 'Kirk' * 10 | 32       | false         | 'maxSize.exceeded' | null
+        [inherit: false] | { name maxSize: 10 } | 'Kirk'      | -1       | true          | null               | null
+        [inherit: false] | { name maxSize: 10 } | 'Kirk' * 10 | -1       | false         | 'maxSize.exceeded' | null
+        [inherit: false] | {}                   | null        | null     | true          | null               | null  // default 'nullable:true' doesn't apply to ad-hoc constraints
+    }
+
+    void 'Test that errors are not cleared for each call when "clearErrors:false" is specified'() {
+        given:
+        def person = new Person(name: '', age: -1, remarks: 'JUST_FOR_COVERAGE')
+
+        when:
+        boolean actualValid = person.validate()
+
+        then:
+        !actualValid
+        person.errors['name']?.code == 'blank'
+        person.errors['age']?.code == 'min.notmet'
+
+        when:
+        actualValid = person.validate(params, adHocConstraints)
+
+        then:
+        actualValid == expectedValid
+        person.errors['name']?.code == nameErrorCode
+        person.errors['age']?.code == ageErrorCode
+
+        where:
+        params               | adHocConstraints                  | expectedValid | nameErrorCode | ageErrorCode
+        [clearErrors: true]  | { age min: -9 }                   | false         | 'blank'       | null
+        [clearErrors: true]  | { name blank: true }              | false         | null          | 'min.notmet'
+        [clearErrors: true]  | { name blank: true; age min: -9 } | true          | null          | null
+        [clearErrors: false] | { age max: -9 }                   | false         | 'blank'       | 'min.notmet'
+        [clearErrors: false] | { name blank: true }              | false         | 'blank'       | 'min.notmet'
+        [clearErrors: false] | { name blank: true; age min: -9 } | false         | 'blank'       | 'min.notmet'
+    }
+
+    void 'Test for a variety of overload methods'() {
+        given:
+        def person = new Person(name: 'Kirk', age: 32, remarks: 'JUST_FOR_COVERAGE')
+
+        expect:
+        person.validate()
+        person.validate(clearErrors: true)
+        !person.validate { age max: 18 }
+        !person.validate(clearErrors: true, inherit: false) { age max: 18 }
+        person.validate(['age'])
+        person.validate(['age'], [clearErrors: true])
+        !person.validate(['age']) { age max: 18 }
+        !person.validate(['age'], [clearErrors: true, inherit: false]) { age max: 18 }
     }
 }
 
@@ -166,7 +237,7 @@ class Person implements AdHocValidateable {
     static constraints = {
         name blank: false
         age min: 0
-        remarks matches: /NOT_TO_OVERWRITE/
+        remarks matches: /JUST_FOR_COVERAGE/ // This is for coverage
     }
 
     static adHocConstraints = {
@@ -175,6 +246,6 @@ class Person implements AdHocValidateable {
     }
 
     def beforeValidate() {
-        name = name.toUpperCase()
+        name = name?.toUpperCase()
     }
 }
