@@ -5,94 +5,97 @@ import spock.lang.Specification
 
 class AdHocValidateableSpec extends Specification {
 
-    class Person implements AdHocValidateable {
-        String name
-        Integer age
-
-        static constraints = {
-            name blank: false
-            age min: 0
-        }
-
-        static adHocConstraints = {
-            name maxSize: 10
-            age max: 18
-        }
-
-        def beforeValidate() {
-            name *= 2
-        }
-    }
-
-    void 'regular validate: right properties'() {
+    void 'Test that pre-declared constraints can be used'() {
         given:
-        def person = new Person(name: 'Bart', age: 21)
-
-        expect:
-        person.validate()
-    }
-
-    void 'regular validate: wrong properties'() {
-        given:
-        def person = new Person(name: '', age: -1)
+        def person = new Person(name: nameValue, age: ageValue, remarks: 'NOT_TO_OVERWRITE')
 
         when:
-        boolean valid = person.validate()
+        boolean actualValid = person.validate()
 
         then:
-        !valid
-        person.errors['name']?.code == 'blank'
-        person.errors['age']?.code == 'min.notmet'
-        person.errors.errorCount == 2
+        actualValid == expectedValid
+        person.errors['name']?.code == nameErrorCode
+        person.errors['age']?.code == ageErrorCode
+
+        where:
+        nameValue | ageValue | expectedValid | nameErrorCode | ageErrorCode
+        'Kirk'    | 32       | true          | null          | null
+        ''        | 32       | false         | 'blank'       | null
+        'Kirk'    | -1       | false         | null          | 'min.notmet'
+        ''        | -1       | false         | 'blank'       | 'min.notmet'
     }
 
-    void 'ad-hoc validate: right properties'() {
+    void 'Test that ad-hoc constraints can be used'() {
         given:
-        def person = new Person(name: 'Bart', age: 21)
-
-        expect:
-        person.validate {
-            name maxSize: 10
-            age max: 60
-        }
-    }
-
-    void 'ad-hoc validate: wrong properties for ad-hoc constraints'() {
-        given:
-        def person = new Person(name: 'Bart' * 10, age: 21)
+        def person = new Person(name: nameValue, age: ageValue, remarks: 'NOT_TO_OVERWRITE')
 
         when:
-        boolean valid = person.validate {
+        boolean actualValid = person.validate {
             name maxSize: 10
             age max: 18
         }
 
         then:
-        !valid
-        person.errors['name']?.code == 'maxSize.exceeded'
-        person.errors['age']?.code == 'max.exceeded'
-        person.errors.errorCount == 2
+        actualValid == expectedValid
+        person.errors['name']?.code == nameErrorCode
+        person.errors['age']?.code == ageErrorCode
+
+        where:
+        nameValue   | ageValue | expectedValid | nameErrorCode      | ageErrorCode
+        'Kirk'      | 15       | true          | null               | null
+        'Kirk' * 10 | 15       | false         | 'maxSize.exceeded' | null
+        'Kirk'      | 32       | false         | null               | 'max.exceeded'
+        'Kirk' * 10 | 32       | false         | 'maxSize.exceeded' | 'max.exceeded'
     }
 
-    void 'ad-hoc validate: a wrong properties for default constraint and ad-hoc constraint respectively'() {
+    void 'Test that "fieldsToValidate" can be used with ad-hoc constraints'() {
         given:
-        def person = new Person(name: 'Bart' * 10, age: -1)
+        def person = new Person(name: nameValue, age: ageValue, remarks: 'NOT_TO_OVERWRITE')
 
         when:
-        boolean valid = person.validate {
+        boolean actualValid = person.validate(['age']) {
+            name maxSize: 10
+            age max: 18
+        }
+
+        then:
+        actualValid == expectedValid
+        person.errors['name']?.code == nameErrorCode
+        person.errors['age']?.code == ageErrorCode
+
+        where:
+        nameValue   | ageValue | expectedValid | nameErrorCode | ageErrorCode
+        'Kirk'      | 15       | true          | null          | null
+        'Kirk' * 10 | 15       | true          | null          | null
+        'Kirk'      | 32       | false         | null          | 'max.exceeded'
+        'Kirk' * 10 | 32       | false         | null          | 'max.exceeded'
+    }
+
+    void 'Test that both pre-declared and ad-hoc constraints can be used together'() {
+        given:
+        def person = new Person(name: nameValue, age: ageValue, remarks: 'NOT_TO_OVERWRITE')
+
+        when:
+        boolean actualValid = person.validate {
             name maxSize: 10
         }
 
         then:
-        !valid
-        person.errors['name']?.code == 'maxSize.exceeded'
-        person.errors['age']?.code == 'min.notmet'
-        person.errors.errorCount == 2
+        actualValid == expectedValid
+        person.errors['name']?.code == nameErrorCode
+        person.errors['age']?.code == ageErrorCode
+
+        where:
+        nameValue   | ageValue | expectedValid | nameErrorCode      | ageErrorCode
+        'Kirk'      | 32       | true          | null               | null
+        'Kirk' * 10 | 32       | false         | 'maxSize.exceeded' | null
+        'Kirk'      | -1       | false         | null               | 'min.notmet'
+        'Kirk' * 10 | -1       | false         | 'maxSize.exceeded' | 'min.notmet'
     }
 
-    void 'ad-hoc validate: pre-declared closure can be used'() {
+    void 'Test that pre-declared closure can be used as ad-hoc constraints'() {
         given:
-        def person = new Person(name: 'Bart' * 10, age: 21)
+        def person = new Person(name: 'Kirk' * 10, age: 32, remarks: 'NOT_TO_OVERWRITE')
 
         when:
         boolean valid = person.validate(Person.adHocConstraints)
@@ -104,19 +107,45 @@ class AdHocValidateableSpec extends Specification {
         person.errors.errorCount == 2
     }
 
-    void 'ad-hoc validate: if a same constraint is given as ad-hoc, the ad-hoc overwrites the default constraint'() {
+    void 'Test that ad-hoc constraints overwrites if the same kind of constraint is given as ad-hoc'() {
         given:
-        def person = new Person(name: '', age: 5)
+        def person = new Person(name: '', age: 32, remarks: 'NOT_TO_OVERWRITE')
 
         expect:
+        !person.validate()
+
+        and:
         person.validate {
             name blank: true
         }
+
+        and: 'cached pre-declared constraints should not be affected'
+        !person.validate()
     }
 
-    void 'beforeValidator is available with ad-hoc validate'() {
+    void 'Test that empty closure as ad-hoc constraints is equivalent with only pre-declared constraints'() {
         given:
-        def person = new Person(name: 'Bart', age: 21)
+        def person = new Person(name: nameValue, age: ageValue, remarks: 'NOT_TO_OVERWRITE')
+
+        when:
+        boolean actualValid = person.validate {}
+
+        then:
+        actualValid == expectedValid
+        person.errors['name']?.code == nameErrorCode
+        person.errors['age']?.code == ageErrorCode
+
+        where:
+        nameValue | ageValue | expectedValid | nameErrorCode | ageErrorCode
+        'Kirk'    | 32       | true          | null          | null
+        ''        | 32       | false         | 'blank'       | null
+        'Kirk'    | -1       | false         | null          | 'min.notmet'
+        ''        | -1       | false         | 'blank'       | 'min.notmet'
+    }
+
+    void 'Test that "beforeValidator" is called with ad-hoc constraints'() {
+        given:
+        def person = new Person(name: 'Kirk', age: 32, remarks: 'NOT_TO_OVERWRITE')
 
         expect:
         person.validate {
@@ -125,6 +154,27 @@ class AdHocValidateableSpec extends Specification {
         }
 
         and:
-        person.name == 'BartBart'
+        person.name == 'KIRK'
+    }
+}
+
+class Person implements AdHocValidateable {
+    String name
+    Integer age
+    String remarks
+
+    static constraints = {
+        name blank: false
+        age min: 0
+        remarks matches: /NOT_TO_OVERWRITE/
+    }
+
+    static adHocConstraints = {
+        name maxSize: 10
+        age max: 18
+    }
+
+    def beforeValidate() {
+        name = name.toUpperCase()
     }
 }
